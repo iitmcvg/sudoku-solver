@@ -6,15 +6,15 @@
 using namespace std;
 using namespace cv;
 vector<vector<Point> > contours;
-vector<Point> approx_poly;
+vector<vector<Point> > approx_poly;
 vector<Vec4i> hierarchy;
 vector<Mat> boxes;
-const int BORDER_REMOVE_P = 0; 
+const int BORDER_REMOVE_P = 0;
 
 /*vector<Point> find_corners(vector<Point> contr, int thresh) {
 	vector<Point>::iterator it;
 	vector<Point> return_points;
-	int dx,dy; 
+	int dx,dy;
 	for(it = contr.begin()+3 ; it != contr.end()-4 ; it++) {
 		dx = abs((((it-3)->x) - (it->x)) - ((it->x) - (it+3)->x));
 		dy = abs((((it-3)->y) - (it->y)) - ((it->y) - (it+3)->y));
@@ -65,20 +65,21 @@ int main (int argc, char *argv[]) {
 		if(contour_areas != temp) j = i;
 	}
 	drawContours( sudoku_box, contours, j, Scalar(255), 1, 8 );
-	
+
  	/*sudoku_box.convertTo(harris,CV_32S);*/
 
+	approx_poly.resize(1);
 	cout << sudoku_box.checkVector(2) <<endl;    // sudoku_box.checkVector(2) should be positive. Only then it can be passed to approxPolyDP
-	approxPolyDP( contours[j], approx_poly, 3,true);        // Mat sudoku_box ( source img), harris ( destination img) 
+	approxPolyDP( contours[j], approx_poly[0], 0.01*arcLength(contours[j], true), true);        // Mat sudoku_box ( source img), harris ( destination img)
 
-	drawContours( harris, approx_poly, 0, Scalar(255), 1, 8 );
+	drawContours( sudoku_box, approx_poly, 0, Scalar(255), 1, 8 );
 
 	/*cornerHarris( sudoku_box, harris, 2, 3, 0.04, BORDER_DEFAULT );
 	normalize( harris, harris_norm, 0, 255, NORM_MINMAX, CV_8UC1, Mat() );
 	convertScaleAbs( harris_norm, harris_scale);
 	int flag=1;*/
 	/*for( j = 0; j < harris.rows ; j++ )
-	{ 
+	{
 		for( i = 0; i < harris.cols; i++ )
 		{
 			if( (int) harris_norm.at<float>(j,i) > thresh )
@@ -89,7 +90,7 @@ int main (int argc, char *argv[]) {
 				break;
 			}
 		}
-		if(flag == 0) break; 
+		if(flag == 0) break;
 	}*/
 	//corners =  find_corners(contours[j],5);
 
