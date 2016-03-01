@@ -8,7 +8,7 @@ using namespace cv;
 vector<vector<Point> > contours, transf_contours;
 vector<vector<Point> > approx_poly;
 vector<Vec4i> hierarchy, transf_hierarchy;
-Mat boxes[82];
+Mat box[82];
 const int BORDER_REMOVE_P = 0;
 
 /*vector<Point> find_corners(vector<Point> contr, int thresh) {
@@ -28,23 +28,23 @@ const int BORDER_REMOVE_P = 0;
 int main (int argc, char *argv[]) {
 
 	//////////////////////////////////////// INITIALIZATION /////////////////////////////////
-	Mat box,src,img = imread(argv[1]),persp_transf,sudoku_box,harris,harris_norm,harris_scale;
+	Mat src,img = imread(argv[1]),persp_transf,sudoku_box,harris,harris_norm,harris_scale;
 	Mat M;
-	src = img;
+	src = img.clone();
 	const int w = img.cols, h = img.rows;
 	double contour_areas=0,temp;
 	int count = 0,i,j,T,r,c,b,thresh=200;
 	vector<Point> corners;
 	Point2f transf_pts[4],corner_pts[4];
 
-	cvtColor(img,img,COLOR_BGR2GRAY);
-	sudoku_box = Mat::zeros( img.rows, img.cols, CV_32FC1);
-	threshold(img,img,0,255,CV_THRESH_BINARY_INV | CV_THRESH_OTSU);
+	cvtColor( img, img, COLOR_BGR2GRAY );
+	sudoku_box = Mat::zeros( img.rows, img.cols, CV_8UC1 );
+	threshold( img, img, 0, 255, CV_THRESH_BINARY_INV | CV_THRESH_OTSU );
 	harris = Mat::zeros( img.rows, img.cols, CV_8UC1 );
 	harris.setTo(Scalar(255));
 	persp_transf = Mat::zeros( img.rows, img.cols, CV_8UC1 );
 	persp_transf.setTo(Scalar(255));
-	box = Mat::zeros( img.rows, img.cols, CV_32SC1 );
+	//box = Mat::zeros( img.rows, img.cols, CV_8UC1 );
 	//box.setTo(Scalar(255));
   ////////////////////////////////////////////////////////////////////////////////////////
 	// ACCESSING EACH BOX IN THE SUDOKU
@@ -53,8 +53,7 @@ int main (int argc, char *argv[]) {
 	for(i = 0 ; i < 9 ; i++) {
 		for(j = 0 ; j < 9 ; j++) {
 			Rect R(Point(c*i + (c*BORDER_REMOVE_P)/100 ,r*j + (r*BORDER_REMOVE_P)/100 ),Point(c*(i+1) - (c*BORDER_REMOVE_P)/100 , r*(j+1) - (r*BORDER_REMOVE_P)/100 ));
-			box = img(R);
-			boxes.push_back(box);
+			box[i*9 + j] = img(R);
 		}
 	}*/
 
@@ -97,25 +96,74 @@ int main (int argc, char *argv[]) {
 	transf_pts[3] = Point2f(img.cols,0); 
 
 	M = getPerspectiveTransform( corner_pts, transf_pts);
+	Mat src_gray;
 	warpPerspective( src, persp_transf, M, persp_transf.size(), INTER_LINEAR, BORDER_CONSTANT);
-	threshold( persp_transf, persp_transf,0,255,CV_THRESH_BINARY_INV | CV_THRESH_OTSU );
+	Mat persp_transf_8UC1;
+	cvtColor(persp_transf, persp_transf_8UC1, COLOR_BGR2GRAY);
+	threshold( persp_transf_8UC1, persp_transf_8UC1, 0, 255, CV_THRESH_BINARY_INV | CV_THRESH_OTSU );
 
 	////////////////////////////////////////////////////////////////////////////////////////////
 
 	//////////////////////// SEGMENTING SMALL BOXES ////////////////////////////////////////////
- /* Mat persp_transf_contours = Mat::zeros(img.rows, img.cols, CV_8UC1);
-	findContours( persp_transf, transf_contours, transf_hierarchy, RETR_TREE, CHAIN_APPROX_SIMPLE);
-	drawContours( persp_transf_contours, transf_contours, -1, Scalar(255), 2, 8 );
+  Mat persp_transf_8UC1_contours = Mat::zeros(img.rows, img.cols, CV_8UC1);
+	//findContours( persp_transf_8UC1, transf_contours, transf_hierarchy, RETR_TREE, CHAIN_APPROX_SIMPLE);
+	/*drawContours( persp_transf_8UC1_contours, transf_contours, -1, Scalar(255), 2, 8 );
 	namedWindow("display1",WINDOW_NORMAL);
-	imshow("display1",persp_transf_contours);
+	imshow("display1",persp_transf_8UC1_contours);
 	waitKey(0);*/
+	for(i = 0 ; i < 81 ; i++) {
+		box[i] = Mat::zeros( img.rows/8, img.cols/8, CV_8UC1 );
+		box[i].setTo(Scalar(255));
+	}
+	Mat kernel;
+	int k,q;
+	cin >> q;
+	c = src.cols/9; r = src.rows/9;
+	for(i = 0 ; i < 9 ; i++) {
+		for(j = 0 ; j < 9 ; j++) {
+			Rect R(Point(c*i, r*j),Point(c*(i+1), r*(j+1)));
+			box[i*9 + j] = persp_transf_8UC1(R);
+			//adaptiveThreshold( box[9*i+j], box[9*i+j], 255, ADAPTIVE_THRESH_GAUSSIAN_C, THRESH_BINARY_INV, 3, 6 );
+			//findContours( box[i*9+j], transf_contours, transf_hierarchy, RETR_TREE, CHAIN_APPROX_SIMPLE);
+			//cout << transf_contours.size() << " ";
+			//drawContours( box[i*9+j], transf_contours, -1, Scalar(255), CV_FILLED, 8 );   
+			if(9*i + j == q) {
+				namedWindow("test",WINDOW_NORMAL);
+				imshow("test",box[q]);
+				waitKey(0);
+			}
+			for(k = 0 ; k < box[i*9+j].rows ; k++) {
+				if(i*9+j == 5) cout << box[i*9+j].at<uchar>(0,k) << " ";
+				if(box[i*9+j].at<uchar>(0,k) >= 200) {
+					floodFill( box[i*9+j], Point(0,k), Scalar(0));
+					break;
+				}
+			}
+			cout << endl;
+			for(k = 0 ; k < box[i*9+j].cols ; k++) {
+				if(box[i*9+j].at<uchar>(k,0) >= 200) {
+					floodFill( box[i*9+j], Point(k,0), Scalar(0));
+					break;
+				}
+			}
+			/*for(k = 0 ; k < box[i*9+j].cols ; k++) {
+				if(box[i*9+j].at<uchar>(k,0) == 255) {
+					floodFill( box[i*9+j], Point(k,0), Scalar(0));
+					break;
+				}
+			}*/
 
-	count=0; r = 0;
-	/*for(i = hierarchy[j][2] ; i >= 0 ; i = hierarchy[i][0]) {
+			resize( box[i*9+j], box[i*9+j], Size(img.cols/4,img.rows/4) );
+			//threshold( box[i*9+j], box[i*9+j], 0, 255, CV_THRESH_BINARY_INV | CV_THRESH_OTSU );
+			/*kernel = getStructuringElement( MORPH_RECT, Size(3,3) );
+			erode( box[i*9+j], box[i*9+j], kernel, Point(-1,-1), 1 );*/ 
+		}
+	}
+
+	/*count=0; r = 0;
+	for(i = hierarchy[j][2] ; i >= 0 ; i = hierarchy[i][0]) {
 		drawContours( box[r], contours, i, Scalar(255), 2, 8);
 		r++;
-		boxes.push_back(box);
-		box.setTo(Scalar(0));
 		cout << (count++) << " " ;
 	}*/
 	//vector<Mat>::iterator box_it;
@@ -168,9 +216,9 @@ int main (int argc, char *argv[]) {
 	//imshow("display3",box);
 	namedWindow("display1",WINDOW_NORMAL);
   namedWindow("test",WINDOW_NORMAL);
-	imshow("test",persp_transf);
+	imshow("test",box[q]);
 	imshow("display1",sudoku_box);
-	imshow("display2",img);
+	imshow("display2",src);
 	waitKey(0);
 
 	return 0;
