@@ -86,7 +86,6 @@ int main (int argc, char *argv[]) {
 	vector<Point>::iterator it;
 	i = 0;
 	for(it = approx_poly[0].begin() ; it != approx_poly[0].end() ; it++) { 
-		cout << "(x,y) = " << "(" << it->x << " , " << it->y << ")" << endl;
 		corner_pts[i] = Point2f( it->x, it->y );
 		i++;
 	}
@@ -115,23 +114,24 @@ int main (int argc, char *argv[]) {
 		box[i] = Mat::zeros( img.rows/8, img.cols/8, CV_8UC1 );
 		box[i].setTo(Scalar(255));
 	}
-	Mat kernel;
+	Mat kernel,temp_box,dummy;
+	temp_box = Mat::zeros( img.rows/8, img.cols/8, CV_8UC1 );
 	int k,q;
 	cin >> q;
 	c = src.cols/9; r = src.rows/9;
 	for(i = 0 ; i < 9 ; i++) {
 		for(j = 0 ; j < 9 ; j++) {
 			Rect R(Point(c*i, r*j),Point(c*(i+1), r*(j+1)));
-			box[i*9 + j] = persp_transf_8UC1(R);
+			box[i*9+j] = persp_transf_8UC1(R);
 			//adaptiveThreshold( box[9*i+j], box[9*i+j], 255, ADAPTIVE_THRESH_GAUSSIAN_C, THRESH_BINARY_INV, 3, 6 );
 			//findContours( box[i*9+j], transf_contours, transf_hierarchy, RETR_TREE, CHAIN_APPROX_SIMPLE);
 			//cout << transf_contours.size() << " ";
 			//drawContours( box[i*9+j], transf_contours, -1, Scalar(255), CV_FILLED, 8 );   
-			if(9*i + j == q) {
+			/*if(9*i+j == q) {
 				namedWindow("test",WINDOW_NORMAL);
 				imshow("test",box[q]);
 				waitKey(0);
-			}
+			}*/
 			for(k = 0 ; k < box[i*9+j].rows ; k++) {
 				if(i*9+j == 5) cout << box[i*9+j].at<uchar>(0,k) << " ";
 				if(box[i*9+j].at<uchar>(0,k) >= 200) {
@@ -139,19 +139,40 @@ int main (int argc, char *argv[]) {
 					break;
 				}
 			}
-			cout << endl;
 			for(k = 0 ; k < box[i*9+j].cols ; k++) {
 				if(box[i*9+j].at<uchar>(k,0) >= 200) {
 					floodFill( box[i*9+j], Point(k,0), Scalar(0));
 					break;
 				}
 			}
-			/*for(k = 0 ; k < box[i*9+j].cols ; k++) {
-				if(box[i*9+j].at<uchar>(k,0) == 255) {
-					floodFill( box[i*9+j], Point(k,0), Scalar(0));
+			for(k = 0 ; k < img.cols/9 ; k++) {
+				if(box[i*9+j].at<uchar>(k,(img.rows/9)-1) == 255) {
+					floodFill( box[i*9+j], Point(k,(img.rows/9)-1), Scalar(0));
 					break;
 				}
-			}*/
+			}
+
+			int iter,max;
+			double areas;
+			contour_areas = 0;
+			dummy = box[i*9+j].clone();
+			findContours( dummy, transf_contours, transf_hierarchy, RETR_LIST, CHAIN_APPROX_SIMPLE );
+			for(iter = 0, max = 0 ; iter < transf_contours.size() ; iter++) {
+				temp = areas;
+				areas = ( areas > (contourArea(transf_contours[iter],false)) ? areas : (contourArea(transf_contours[iter],false)) );
+				if(areas != temp) max = iter;
+			}
+			if(transf_contours.size()) {
+				Rect bound_rect = boundingRect( Mat(transf_contours[max]) );
+				temp_box = box[i*9+j](bound_rect);
+				copyMakeBorder( temp_box, temp_box, 3, 3, 3, 3, BORDER_REPLICATE ); 
+				//imshow("test",temp_box);
+				//waitKey(0);
+			}
+			if(i*9+j == q) {
+				imshow("GAF",temp_box);
+				waitKey(0);
+			}
 
 			resize( box[i*9+j], box[i*9+j], Size(img.cols/4,img.rows/4) );
 			//threshold( box[i*9+j], box[i*9+j], 0, 255, CV_THRESH_BINARY_INV | CV_THRESH_OTSU );
@@ -208,7 +229,6 @@ int main (int argc, char *argv[]) {
 		}
 		}*/
 
-	//resize(img,img,Size(img.cols/4,img.rows/4));
 
 	//namedWindow("display3",WINDOW_NORMAL);
 	namedWindow("display2",WINDOW_NORMAL);
