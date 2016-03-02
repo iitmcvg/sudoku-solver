@@ -1,4 +1,5 @@
 #include "opencv2/imgproc/imgproc.hpp"
+#include <tesseract/baseapi.h>
 #include "opencv2/highgui/highgui.hpp"
 #include <cstdlib>
 #include <iostream>
@@ -29,7 +30,8 @@ int main (int argc, char *argv[]) {
 
 	//////////////////////////////////////// INITIALIZATION /////////////////////////////////
 	Mat src,img = imread(argv[1]),persp_transf,sudoku_box,harris,harris_norm,harris_scale;
-	Mat M;
+	resize( img, img, Size(500,500) );
+	Mat M,kernel;
 	src = img.clone();
 	const int w = img.cols, h = img.rows;
 	double contour_areas=0,temp;
@@ -39,30 +41,36 @@ int main (int argc, char *argv[]) {
 
 	cvtColor( img, img, COLOR_BGR2GRAY );
 	sudoku_box = Mat::zeros( img.rows, img.cols, CV_8UC1 );
-	threshold( img, img, 0, 255, CV_THRESH_BINARY_INV | CV_THRESH_OTSU );
+	GaussianBlur( img, img, Size(5,5), 0, 0, BORDER_DEFAULT );
+	kernel = getStructuringElement( MORPH_RECT, Size(3,3) );
+	erode( img, img, kernel, Point(-1,-1), 1 ); 
+	//threshold( img, img, 0, 255, CV_THRESH_BINARY_INV | CV_THRESH_OTSU );
+	adaptiveThreshold( img, img, 255, ADAPTIVE_THRESH_MEAN_C, THRESH_BINARY_INV, 5, 0 );
+	imshow("ASFD",img);
+	waitKey(0);
 	harris = Mat::zeros( img.rows, img.cols, CV_8UC1 );
 	harris.setTo(Scalar(255));
 	persp_transf = Mat::zeros( img.rows, img.cols, CV_8UC1 );
 	persp_transf.setTo(Scalar(255));
 	//box = Mat::zeros( img.rows, img.cols, CV_8UC1 );
 	//box.setTo(Scalar(255));
-  ////////////////////////////////////////////////////////////////////////////////////////
+	////////////////////////////////////////////////////////////////////////////////////////
 	// ACCESSING EACH BOX IN THE SUDOKU
 
 	/*c = img.cols/9; r = img.rows/9;
-	for(i = 0 ; i < 9 ; i++) {
+		for(i = 0 ; i < 9 ; i++) {
 		for(j = 0 ; j < 9 ; j++) {
-			Rect R(Point(c*i + (c*BORDER_REMOVE_P)/100 ,r*j + (r*BORDER_REMOVE_P)/100 ),Point(c*(i+1) - (c*BORDER_REMOVE_P)/100 , r*(j+1) - (r*BORDER_REMOVE_P)/100 ));
-			box[i*9 + j] = img(R);
+		Rect R(Point(c*i + (c*BORDER_REMOVE_P)/100 ,r*j + (r*BORDER_REMOVE_P)/100 ),Point(c*(i+1) - (c*BORDER_REMOVE_P)/100 , r*(j+1) - (r*BORDER_REMOVE_P)/100 ));
+		box[i*9 + j] = img(R);
 		}
-	}*/
+		}*/
 
 	///////////////////////////////////////////////////////////////////////////////////////
 
 	/*namedWindow("display1",WINDOW_NORMAL);
-	imshow("display1",(*(boxes.begin()+31)));
-	waitKey(0);*/
-  
+		imshow("display1",(*(boxes.begin()+31)));
+		waitKey(0);*/
+
 	////////////////////////////// FINDING SUDOKU BOX /////////////////////////////////////
 	findContours( img, contours, hierarchy, RETR_TREE, CHAIN_APPROX_SIMPLE);
 	int idx = 0;
@@ -74,6 +82,8 @@ int main (int argc, char *argv[]) {
 		if(contour_areas != temp) j = i;
 	}
 	drawContours( sudoku_box, contours, j, Scalar(255), 2, 8 );
+	imshow("ASFD",sudoku_box);
+	waitKey(0);
 
 
 	approx_poly.resize(1);
@@ -81,7 +91,7 @@ int main (int argc, char *argv[]) {
 
 	drawContours( sudoku_box, approx_poly, 0, Scalar(255), 2, 8 );    
 	////////////////////////////////////////////////////////////////////////////////////////////
-	
+
 	///////////////////////////// PERSPECTIVE TRANSFORMATION ///////////////////////////////////
 	vector<Point>::iterator it;
 	i = 0;
@@ -100,29 +110,50 @@ int main (int argc, char *argv[]) {
 	Mat persp_transf_8UC1;
 	cvtColor(persp_transf, persp_transf_8UC1, COLOR_BGR2GRAY);
 	threshold( persp_transf_8UC1, persp_transf_8UC1, 0, 255, CV_THRESH_BINARY_INV | CV_THRESH_OTSU );
+	imshow("test",persp_transf_8UC1);
+	waitKey(0);
 
 	////////////////////////////////////////////////////////////////////////////////////////////
 
 	//////////////////////// SEGMENTING SMALL BOXES ////////////////////////////////////////////
-  Mat persp_transf_8UC1_contours = Mat::zeros(img.rows, img.cols, CV_8UC1);
+	int k,q,fl=0;
+	Mat persp_transf_8UC1_contours = Mat::zeros(img.rows, img.cols, CV_8UC1);
 	//findContours( persp_transf_8UC1, transf_contours, transf_hierarchy, RETR_TREE, CHAIN_APPROX_SIMPLE);
 	/*drawContours( persp_transf_8UC1_contours, transf_contours, -1, Scalar(255), 2, 8 );
-	namedWindow("display1",WINDOW_NORMAL);
-	imshow("display1",persp_transf_8UC1_contours);
-	waitKey(0);*/
+		namedWindow("display1",WINDOW_NORMAL);
+		imshow("display1",persp_transf_8UC1_contours);
+		waitKey(0);*/
+
+	for(k = 0 ; k < persp_transf_8UC1.rows ; k++) {
+		if(i*9+j == 5) cout << persp_transf_8UC1.at<uchar>(0,k) << " ";
+		if(persp_transf_8UC1.at<uchar>(0,k) >= 200) {
+			floodFill( persp_transf_8UC1, Point(0,k), Scalar(0));
+			fl = 1;
+			break;
+		}
+	}
+	if(fl == 0) {
+		for(k = 0 ; k < persp_transf_8UC1.cols ; k++) {
+			if(persp_transf_8UC1.at<uchar>(k,0) >= 200) {
+				floodFill( persp_transf_8UC1, Point(k,0), Scalar(0));
+				break;
+			}
+		}
+	}
+
 	for(i = 0 ; i < 81 ; i++) {
 		box[i] = Mat::zeros( img.rows/8, img.cols/8, CV_8UC1 );
 		box[i].setTo(Scalar(255));
 	}
-	Mat kernel,temp_box,dummy;
-	temp_box = Mat::zeros( img.rows/8, img.cols/8, CV_8UC1 );
-	int k,q;
+	Mat temp_box,dummy;
+	temp_box = Mat::zeros( img.rows/3, img.cols/3, CV_8UC1 );
 	cin >> q;
 	c = src.cols/9; r = src.rows/9;
 	for(i = 0 ; i < 9 ; i++) {
 		for(j = 0 ; j < 9 ; j++) {
 			Rect R(Point(c*i, r*j),Point(c*(i+1), r*(j+1)));
 			box[i*9+j] = persp_transf_8UC1(R);
+
 			//adaptiveThreshold( box[9*i+j], box[9*i+j], 255, ADAPTIVE_THRESH_GAUSSIAN_C, THRESH_BINARY_INV, 3, 6 );
 			//findContours( box[i*9+j], transf_contours, transf_hierarchy, RETR_TREE, CHAIN_APPROX_SIMPLE);
 			//cout << transf_contours.size() << " ";
@@ -131,26 +162,28 @@ int main (int argc, char *argv[]) {
 				namedWindow("test",WINDOW_NORMAL);
 				imshow("test",box[q]);
 				waitKey(0);
-			}*/
-			for(k = 0 ; k < box[i*9+j].rows ; k++) {
+				}*/
+
+
+			/*for(k = 0 ; k < box[i*9+j].rows ; k++) {
 				if(i*9+j == 5) cout << box[i*9+j].at<uchar>(0,k) << " ";
 				if(box[i*9+j].at<uchar>(0,k) >= 200) {
-					floodFill( box[i*9+j], Point(0,k), Scalar(0));
-					break;
+				floodFill( box[i*9+j], Point(0,k), Scalar(0));
+				break;
 				}
-			}
-			for(k = 0 ; k < box[i*9+j].cols ; k++) {
+				}
+				for(k = 0 ; k < box[i*9+j].cols ; k++) {
 				if(box[i*9+j].at<uchar>(k,0) >= 200) {
-					floodFill( box[i*9+j], Point(k,0), Scalar(0));
-					break;
+				floodFill( box[i*9+j], Point(k,0), Scalar(0));
+				break;
 				}
-			}
-			for(k = 0 ; k < img.cols/9 ; k++) {
+				}
+				for(k = 0 ; k < img.cols/9 ; k++) {
 				if(box[i*9+j].at<uchar>(k,(img.rows/9)-1) == 255) {
-					floodFill( box[i*9+j], Point(k,(img.rows/9)-1), Scalar(0));
-					break;
+				floodFill( box[i*9+j], Point(k,(img.rows/9)-1), Scalar(0));
+				break;
 				}
-			}
+				}*/
 
 			int iter,max;
 			double areas;
@@ -166,10 +199,9 @@ int main (int argc, char *argv[]) {
 				Rect bound_rect = boundingRect( Mat(transf_contours[max]) );
 				temp_box = box[i*9+j](bound_rect);
 				copyMakeBorder( temp_box, temp_box, 3, 3, 3, 3, BORDER_REPLICATE ); 
-				//imshow("test",temp_box);
-				//waitKey(0);
 			}
 			if(i*9+j == q) {
+				namedWindow("GAF",WINDOW_NORMAL);
 				imshow("GAF",temp_box);
 				waitKey(0);
 			}
@@ -177,65 +209,24 @@ int main (int argc, char *argv[]) {
 			resize( box[i*9+j], box[i*9+j], Size(img.cols/4,img.rows/4) );
 			//threshold( box[i*9+j], box[i*9+j], 0, 255, CV_THRESH_BINARY_INV | CV_THRESH_OTSU );
 			/*kernel = getStructuringElement( MORPH_RECT, Size(3,3) );
-			erode( box[i*9+j], box[i*9+j], kernel, Point(-1,-1), 1 );*/ 
+				erode( box[i*9+j], box[i*9+j], kernel, Point(-1,-1), 1 );*/ 
 		}
 	}
 
-	/*count=0; r = 0;
-	for(i = hierarchy[j][2] ; i >= 0 ; i = hierarchy[i][0]) {
-		drawContours( box[r], contours, i, Scalar(255), 2, 8);
-		r++;
-		cout << (count++) << " " ;
-	}*/
-	//vector<Mat>::iterator box_it;
-	//for(box_it = boxes.begin() ; box_it != boxes.begin() + 11 ; box_it++) {
-		//namedWindow("small_boxes",WINDOW_NORMAL);
-		//imshow("small_boxes" , box);
-		//waitKey(0);
-	//}
-	//cout << endl;
-	//drawContours( box, contours, hierarchy[j][2], Scalar(255), 2, 8 );
-	
-	/*cornerHarris( sudoku_box, harris, 2, 3, 0.04, BORDER_DEFAULT );
-	normalize( harris, harris_norm, 0, 255, NORM_MINMAX, CV_8UC1, Mat() );
-	convertScaleAbs( harris_norm, harris_scale);
-	int flag=1;
-	for( j = 0; j < harris_norm.rows ; j++ )
-	{
-		for( i = 0; i < harris_norm.cols; i++ )
-		{
-			if( (int) harris_norm.at<float>(j,i) > thresh )
-			{
-				circle( harris_scale, Point( i, j ), 5,  Scalar(255,0,0), 2, 8, 0 );
-				//cout << i << " " << j << endl;
-				//flag = 0;
-				//break;
-			}
-		}
-		//if(flag == 0) break;
-	}*/
-	//corners =  find_corners(contours[j],5);
+	tesseract::TessBaseAPI tess;
+	tess.Init(NULL, "eng", tesseract::OEM_DEFAULT);
+	tess.SetPageSegMode(tesseract::PSM_SINGLE_BLOCK);
+	tess.SetImage((uchar*)box[q].data, box[q].cols, box[q].rows, 1, box[q].cols);
 
-
-	/*for( ; idx >= 0; idx = hierarchy[idx][0] )
-	{
-		drawContours( sudoku_box, contours, idx, Scalar(100), 2, 8, hierarchy );
-	}*/
-
-	/*for(i = 0 ; i < img.rows ; i++) {
-		for(j = 0 ; j < img.cols ; j++) {
-		b = img.at<Vec3b>(i,j)[0]; g = img.at<Vec3b>(i,j)[1]; r = img.at<Vec3b>(i,j)[2];
-		img.at<Vec3b>(i,j)[0] = img.at<Vec3b>(i,j)[1] = img.at<Vec3b>(i,j)[2] = (r+g+b)/3;
-		}
-		}*/
-
+	char *out = tess.GetUTF8Text();
+	cout << out << endl;
 
 	//namedWindow("display3",WINDOW_NORMAL);
 	namedWindow("display2",WINDOW_NORMAL);
 	//resizeWindow("display",w,h);
 	//imshow("display3",box);
 	namedWindow("display1",WINDOW_NORMAL);
-  namedWindow("test",WINDOW_NORMAL);
+	namedWindow("test",WINDOW_NORMAL);
 	imshow("test",box[q]);
 	imshow("display1",sudoku_box);
 	imshow("display2",src);
