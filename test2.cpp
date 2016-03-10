@@ -14,20 +14,20 @@ vector<vector<Point> > contours, transf_contours, transf_contours2;
 vector<vector<Point> > approx_poly;
 vector<Vec4i> hierarchy, transf_hierarchy, transf_hierarchy2;
 int sudoku_num[9][9];
-vector<Mat> box(82);
+Mat box[82];
 const int BORDER_REMOVE_P = 0;
 
 
 int FindIndex( Point2f mid_pt, int cols, int rows ) {
 	int i,j,mc=9999,mr=9999,ind_x,ind_y;
 	for(i = 1 ; i <= 9 ; i++) {
-		if ( mid_pt.x - (2*i-1)*(cols/18) < mc ) {
-			ind_x = i;
-			mc = mid_pt.x - (2*i-1)*(cols/18);
+		if ( abs(mid_pt.x - (2*i-1)*(cols/18)) < mc ) {
+			ind_x = i-1;
+			mc = abs(mid_pt.x - (2*i-1)*(cols/18));
 		}
-		if ( mid_pt.y - (2*i-1)*(rows/18) < mr ) {
-			ind_y = i;
-			mr = mid_pt.x - (2*i-1)*(rows/18);
+		if ( abs(mid_pt.y - (2*i-1)*(rows/18)) < mr ) {
+			ind_y = i-1;
+			mr = abs(mid_pt.y - (2*i-1)*(rows/18));
 		}
 	}
 	return (9*ind_x + ind_y);
@@ -50,12 +50,13 @@ bool comp(const pair<int, int>&i, const pair<int, int>&j) {
 	}
 	return return_points;
 }*/
+int check[82];
 
 int main (int argc, char *argv[]) {
 
 	//////////////////////////////////////// INITIALIZATION /////////////////////////////////
 	Mat src, img = imread(argv[1]);
-	Mat persp_transf, sudoku_box,harris, harris_norm, harris_scale;
+	Mat persp_transf, sudoku_box;
 	resize( img, img, Size(500,500) );
 	cout << " img  dimensions : " << img.rows << " " << img.cols << " " << img.type() << " " << img.channels() << endl;
 	Mat M,kernel;
@@ -80,8 +81,6 @@ int main (int argc, char *argv[]) {
 			else img.at<uchar>(i,j) = 255;
 		}
 	}
-	harris = Mat::zeros( img.rows, img.cols, CV_8UC1 );
-	harris.setTo(Scalar(255));
 	persp_transf = Mat::zeros( img.rows, img.cols, CV_8UC1 );
 	persp_transf.setTo(Scalar(255));
 	//box = Mat::zeros( img.rows, img.cols, CV_8UC1 );
@@ -178,24 +177,31 @@ int main (int argc, char *argv[]) {
 	pair<float, float> tempr;
 	vector<pair<float, float> >::iterator itt;
 	contour_areas = 0;
+	//////////////////////////////// Finding contour with max. area, whose child will be the 81 boxes ////////////////////////
 	for(i = 0, box_index = 0 ; i < transf_contours.size() ; i = transf_hierarchy[i][0]) {
 		temp = contour_areas;
 		contour_areas = max(contour_areas,(contourArea(transf_contours[i],false)));
 		if(contour_areas != temp) box_index = i;
 	}
+	//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	for(i = 0 ; i < 82 ; i++) check[i] = 0;
+
+	count = 0;
 	for(i = transf_hierarchy[box_index][2] ; i >= 0 ; i = transf_hierarchy[i][0]) {
 		if(contourArea(transf_contours[i],false) > 100) {
 			drawContours( persp_transf_8UC1_contours, transf_contours, i, Scalar(255), 1, 8 );
 			t++;
 
 			approx_poly_boxes.resize(1);
-			approxPolyDP( transf_contours[i], approx_poly_boxes[0], 0.01*arcLength(transf_contours[i], true), true);  // OBTAINING CORNER POINTS
+			approxPolyDP( transf_contours[i], approx_poly_boxes[0], 0.04*arcLength(transf_contours[i], true), true);  // OBTAINING CORNER POINTS
 			mid_pt = Point2f(0,0);
 
 			for(it = approx_poly_boxes[0].begin() ; it != approx_poly_boxes[0].end() ; it++) { 
-				mid_pt += Point2f( (it->x)/4, (it->y)/4 );
+				mid_pt += Point2f( (it->x), (it->y) );
 				box_vertices.push_back( make_pair(it->x, it->y) );
 			}
+			mid_pt.x /= 4;
+			mid_pt.y /= 4;
 
 			sort( box_vertices.begin(), box_vertices.end(), comp );
 			itt = box_vertices.begin();
@@ -204,13 +210,19 @@ int main (int argc, char *argv[]) {
 				*(itt+1) = *(itt+2);
 				*(itt+2) = tempr;
 			}
+			count++;
 			int index = FindIndex( mid_pt, img.cols, img.rows );
 			i1 = 0;
-
+			cout << count << " " << approx_poly_boxes[0].size() << " :- " << endl; 
 			for(itt = box_vertices.begin() ; itt != box_vertices.end() ; itt++) {
 			  small_boxes[index][i1] = Point2f( itt->first, itt->second );
 				i1++;
+				cout << itt->first << " " << itt->second << endl;
 			}
+			cout << " mp : " << mid_pt.x << " " << mid_pt.y << endl;
+			cout << index <<  endl;
+			check[index]++;
+			cout << endl;
 			box_vertices.erase( box_vertices.begin(), box_vertices.end() );
 			approx_poly_boxes[0].erase( approx_poly_boxes[0].begin(), approx_poly_boxes[0].end() );
 		}
@@ -225,35 +237,51 @@ int main (int argc, char *argv[]) {
 	resize( persp_transf_8UC1_contours, persp_transf_8UC1_contours, Size(img.cols, img.rows) );
 	imshow("boxes_cont",persp_transf_8UC1_contours);
 	//imshow( "TEST", boxes[q]);
-	namedWindow("display2",WINDOW_NORMAL);
-	imshow("display2",persp_transf_8UC1);
 
-	Mat temp_box,dummy,dummy3;
+	Mat temp_box, dummy, dummy3, temp_out;
+
+	dummy3 = Mat::zeros( img.rows, img.cols, CV_8UC1 );
 
 	vector<Mat>::iterator mit;
 	for(i = 0 ; i < 82 ; i++) {
-		Mat temp_out(img.rows/8, img.cols/8, CV_8UC1, Scalar::all(255 ));
+		Mat temp_out(img.rows, img.cols, CV_8UC1, Scalar::all(255));
 		temp_out.copyTo(box[i]);
-		cout << box[i] << "--";
 	}
+	temp_out = Mat::zeros(img.cols, img.rows, CV_8UC1 );
+
+	for(i = 0 ; i < 81 ; i++) {
+		rectangle( temp_out, small_boxes[i][0], small_boxes[i][3], Scalar(255), 1, 8, 0);
+	}
+	namedWindow("display2",WINDOW_NORMAL);
+	imshow("display2",temp_out);
+	waitKey(0);
+
 	temp_box = Mat::zeros( img.rows/3, img.cols/3, CV_8UC1 );
-	c = src.cols/9; r = src.rows/9;
 	int iter,max;
 	Point2f p1,p2;
 	double areas;
+	int width, height;
+
+	c = persp_transf.cols; r = persp_transf.rows;
+
 	for(i = 0 ; i < 9 ; i++) {
 		for(j = 0 ; j < 9 ; j++) {
 			p1 = small_boxes[i*9+j][0]; 
-			p2 = small_boxes[i*9+j][4]; 
-			Rect R(p1,p2);
-			dummy3 = Mat::zeros( img.rows/8, img.cols/8, CV_8UC1 );
+			p2 = small_boxes[i*9+j][3]; 
+			width = p2.x - p1.x;
+			height = p2.y - p1.y;
+			cout << "   " << p1.x << " " << p1.y << " " << width << " " << height << endl; 
+			Rect R ( p1.x, p1.y, width, height );
 			dummy3.setTo(Scalar(255));
-			dummy3 = box[81].clone();
-			dummy3 = persp_transf(R);
-			cout << "in " << box.size();;
+			//dummy3 = box[81].clone();
+			cout << "     " << dummy3.cols << " " << dummy3.rows << endl;
+			if(0 <= R.x && 0 <= R.width && R.x + R.width <= c && 0 <= R.y && 0 <= R.height && R.y + R.height <= r)
+			  dummy3 = persp_transf(R);
+			else 
+				cout << "ASDF" << endl;
 			cvtColor( dummy3, box[i*9+j], COLOR_BGR2GRAY );
-			cout << "out ";
 			threshold( box[i*9+j], box[i*9+j], 0, 255, CV_THRESH_BINARY_INV | CV_THRESH_OTSU );
+			
 			//adaptiveThreshold( box[9*i+j], box[9*i+j], 255, ADAPTIVE_THRESH_GAUSSIAN_C, THRESH_BINARY_INV, 3, 6 );
 			//findContours( box[i*9+j], transf_contours, transf_hierarchy, RETR_TREE, CHAIN_APPROX_SIMPLE);
 			//cout << transf_contours.size() << " ";
@@ -264,33 +292,13 @@ int main (int argc, char *argv[]) {
 				waitKey(0);
 				}*/
 
-
-
-			/*for(k = 0 ;  ; k++) {
-				if(box[i*9+j].at<uchar>(k,k) <= 200) {
-					floodFill( box[i*9+j], Point(k,k), Scalar(255));
-					fl = 1;
-					break;
-				}
-			}*/
-
-			/*int y,z,cnt_w=0,cnt_b=0;
-			for(y = 0 ; y <= box[i*9+j].rows ; y++) {
-				for(z = 0 ; z <= box[i*9+j].cols ; z++) {
-					if(box[i*9+j].at<uchar>(z,y) >= 200) cnt_w++;
-					else cnt_b++;
-				}
-			}*/
-		//	cout << i*9+j << " : " <<  cnt_w << " " << cnt_b << endl;
-
-
 			dummy = Mat::zeros( img.rows/8, img.cols/8, CV_8UC1 );
 			dummy.setTo(Scalar(255));
 
 			areas = 0;
 			contour_areas = 0;
-			cout << dummy.rows << " " << dummy.cols << " " << dummy.type() << " " << dummy.channels() << endl;
 			findContours( dummy, transf_contours2, transf_hierarchy2, RETR_TREE, CHAIN_APPROX_SIMPLE );
+			cout << dummy.rows << " " << dummy.cols << " " << dummy.type() << " " << dummy.channels() << endl;
 			for(iter = 0, max = 0 ; iter < transf_contours2.size() ; iter++) {
 				temp = areas;
 				areas = ( areas > (contourArea(transf_contours2[iter],false)) ? areas : (contourArea(transf_contours2[iter],false)) );
