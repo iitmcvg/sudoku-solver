@@ -1,3 +1,5 @@
+#ifndef STD_LIBS
+#define STD_LIBS
 #include "opencv2/imgproc/imgproc.hpp"
 #include <tesseract/baseapi.h>
 #include <leptonica/allheaders.h>
@@ -12,6 +14,10 @@
 #include <vector>
 #include <map>
 #include <set>
+#endif
+#define RM_WHITE 3
+#define THRESH_NUM 20
+#define THRESH_NUM_DIFF 40
 using namespace std;
 using namespace cv;
 vector<vector<Point> > contours, transf_contours, transf_contours2;
@@ -20,6 +26,33 @@ vector<Vec4i> hierarchy, transf_hierarchy, transf_hierarchy2;
 int sudoku_num[9][9];
 Mat box[82];
 const int BORDER_REMOVE_P = 0;
+
+void swap_point(Point& p1, Point& p2) {
+	Point temp;
+	temp = p1;
+	p1 = p2;
+	p2 = temp;
+}
+
+void sort_boundaryPoints( vector<Point>& points ) {
+	vector<Point>::iterator it,temp;
+	int s = 1,x,y;
+	while(s != 0) {
+		s = 0;
+		for(it = points.begin()+1 ; it != points.end() ; it++) {
+			if((it-1)->x > it->x) {
+				swap_point(*(it-1), *it); 
+				s++;
+			}
+		}
+	}
+	if(points[0].y > points[1].y) {
+		swap_point(points[0],points[1]); 
+	}
+	if(points[2].y < points[3].y) {
+		swap_point(points[2],points[3]); 
+	}
+}
 
 int FindIndex( Point2f mid_pt, int cols, int rows ) {
 	int i,j,mc=9999,mr=9999,ind_x,ind_y;
@@ -46,24 +79,31 @@ void remove_whiteBorders( Mat& b, int width, int height, const Scalar color ) {
 	floodFill( b, Point2f( width-1, 0 ), color );
 	floodFill( b, Point2f( 0, height-1 ), color );
 	floodFill( b, Point2f(width-1, height-1), color );
-	for(int u = 0 ; u < width ; u++) {
-		if( b.at<uchar>(u, 0) >= 200 ) {
-			floodFill( b, Point(u, 0), color);
+	for(i = 0 ; i < RM_WHITE ; i++) {
+		for(int u = 0 ; u < width ; u++) {
+			if( b.at<uchar>(u, i) >= 200 ) {
+				//floodFill( b, Point(u, i), color);
+				b.at<Scalar>(u,i) = color;
+			}
 		}
-	}
-	for(int u = 0 ; u < height ; u++) {
-		if( b.at<uchar>(u, 0) >= 200 ) {
-			floodFill( b, Point(0, u), color);
+
+		for(int u = 0 ; u < height ; u++) {
+			if( b.at<uchar>(i, u) >= 200 ) {
+				//floodFill( b, Point(i, u), color);
+				b.at<Scalar>(i,u) = color;
+			}
 		}
-	}
-	for(int u = 0 ; u < width ; u++) {
-		if( b.at<uchar>(u, width-1) >= 200 ) {
-			floodFill( b, Point(u, height-1), color);
+		for(int u = 0 ; u < width ; u++) {
+			if( b.at<uchar>(u, height-i-1) >= 200 ) {
+				//floodFill( b, Point(u, height-i-1), color);
+				b.at<Scalar>(u,height-i-1) = color;
+			}
 		}
-	}
-	for(int u = 0 ; u < height ; u++) {
-		if( b.at<uchar>(u, 0) >= 200 ) {
-			floodFill( b, Point(width-1, u), color);
+		for(int u = 0 ; u < height ; u++) {
+			if( b.at<uchar>(width-i-1, u) >= 200 ) {
+				//floodFill( b, Point(width-i-1, u), color);
+				b.at<Scalar>(width-i-1,u) = color;
+			}
 		}
 	}
 	return;
@@ -93,6 +133,51 @@ void bound_rect_error(Rect& R, int c, int r ) {
 	}
 }
 
+void adaptive_otsuThresholding( Mat& src, Mat& dst, int l = 0, int u = 255 ) {
+	int i,j,r,c;
+	r = src.rows; 
+	c = src.cols;
+	Mat p1,p2,p3,p4;
+	p1 = Mat::zeros( src.size(), CV_8UC1 );
+	p2 = p1.clone() ; p3 = p1.clone() ; p4 = p1.clone() ;
+	for(i = 0 ; i < r ; i++) {
+		for(j = 0 ; j < c ; j++) {
+			if(i <= r/2 && j <= c/2) {
+				p1.at<uchar>(j,i) = src.at<uchar>(j,i);
+			}
+			else if(i > r/2 && j <= c/2) {
+				p2.at<uchar>(j,i) = src.at<uchar>(j,i);
+			}
+			else if(i <= r/2 && j > c/2) {
+				p3.at<uchar>(j,i) = src.at<uchar>(j,i);
+			}
+			else {
+				p4.at<uchar>(j,i) = src.at<uchar>(j,i);
+			}
+		}
+	}
+	threshold( p1, p1, l, u, CV_THRESH_BINARY | CV_THRESH_OTSU );
+	threshold( p2, p2, l, u, CV_THRESH_BINARY | CV_THRESH_OTSU );
+	threshold( p3, p3, l, u, CV_THRESH_BINARY | CV_THRESH_OTSU );
+	threshold( p4, p4, l, u, CV_THRESH_BINARY | CV_THRESH_OTSU );
+	dst = Mat::zeros( src.size(), CV_8UC1 );
+	add( p1, dst, dst );
+	add( p2, dst, dst );
+	add( p3, dst, dst );
+	add( p4, dst, dst );
+}
+
+bool can_be_Number( Mat& img, int width, int height ) {
+	int i, j, cnt = 0, b = 0;
+	double ratio, area = width*height, wh;
+	for(i = RM_WHITE ; i < height - RM_WHITE ; i++) {
+		for(j = RM_WHITE ; j < width - RM_WHITE ; j++) {
+			if( abs(img.at<uchar>(j,i) - img.at<uchar>(j,i-1)) >= THRESH_NUM ) cnt++;
+		}
+	}
+	return ( cnt >= THRESH_NUM_DIFF ); 
+}
+
 int check[82];
 
 int main (int argc, char *argv[]) {
@@ -114,9 +199,10 @@ int main (int argc, char *argv[]) {
 	sudoku_box = Mat::zeros( img.rows, img.cols, CV_8UC1 );
 	GaussianBlur( img, img, Size(5,5), 0, 0, BORDER_DEFAULT );
 	kernel = getStructuringElement( MORPH_RECT, Size(3,3) );
+
 	//erode( img, img, kernel, Point(-1,-1), 1 ); 
 	//dilate( img, img, kernel, Point(-1,-1), 1 );
-	//threshold( img, img, 0, 255, CV_THRESH_BINARY_INV | CV_THRESH_OTSU );
+	//threshold( persp_transf_8UC1, persp_transf_8UC1, 0, 255, CV_THRESH_BINARY_INV | CV_THRESH_OTSU );
 	adaptiveThreshold( img, img, 255, ADAPTIVE_THRESH_GAUSSIAN_C, THRESH_BINARY, 11, 2 );
 	for(i = 0 ; i < img.rows ; i++) {
 		for(j = 0 ; j < img.cols ; j++) {
@@ -142,12 +228,16 @@ int main (int argc, char *argv[]) {
 	approx_poly.resize(1);
 	approxPolyDP( contours[j], approx_poly[0], 0.01*arcLength(contours[j], true), true);  // OBTAINING CORNER POINTS
 
+	vector<Point>::iterator it;
+
+	sort_boundaryPoints(approx_poly[0]);
+
 	drawContours( sudoku_box, approx_poly, 0, Scalar(255), 2, 8 );    
 	//imshow("sudoku_box",sudoku_box);
+	//waitKey(0);
 	////////////////////////////////////////////////////////////////////////////////////////////
 
 	///////////////////////////// PERSPECTIVE TRANSFORMATION ///////////////////////////////////
-	vector<Point>::iterator it;
 	i = 0;
 	for(it = approx_poly[0].begin() ; it != approx_poly[0].end() ; it++) { 
 		corner_pts[i] = Point2f( it->x, it->y );
@@ -165,7 +255,6 @@ int main (int argc, char *argv[]) {
 	Mat persp_transf_8UC1;
 	cvtColor(persp_transf, persp_transf_8UC1, COLOR_BGR2GRAY);
 	//threshold( persp_transf_8UC1, persp_transf_8UC1, 0, 255, CV_THRESH_BINARY_INV | CV_THRESH_OTSU );
-	//imshow("tes", persp_transf_8UC1);
 	//imshow("tesr", persp_transf_8UC1);
 
 	GaussianBlur( persp_transf_8UC1, persp_transf_8UC1, Size(5,5), 0, 0, BORDER_DEFAULT );
@@ -197,7 +286,7 @@ int main (int argc, char *argv[]) {
 		}
 		}*/
 
-	cin >> q;
+	//cin >> q;
 
 	int t = 0,box_index,i1,i2;
 	Point2f mid_pt = Point2f(0,0), small_boxes[82][4];
@@ -290,8 +379,8 @@ int main (int argc, char *argv[]) {
 		rectangle( temp_out, small_boxes[i][0], small_boxes[i][3], Scalar(255), 1, 8, 0);
 	}
 	//namedWindow("display2",WINDOW_NORMAL);
-	//imshow("display2",temp_out);
-	//waitKey(0);
+	imshow("display2",temp_out);
+	waitKey(0);
 
 	//fill_smallBoxes(
 
@@ -306,6 +395,8 @@ int main (int argc, char *argv[]) {
 
 	c = persp_transf.cols; r = persp_transf.rows;
 	Rect bound_rect;
+
+	int ct = 0;
 
 	for(i = 0 ; i < 9 ; i++) {
 		for(j = 0 ; j < 9 ; j++) {
@@ -324,66 +415,91 @@ int main (int argc, char *argv[]) {
 				bound_rect_error( R, c, r );
 			}
 
-			cvtColor( dummy3, box[i*9+j], COLOR_BGR2GRAY );
+			Mat gray_box = Mat::zeros( dummy3.size(), CV_8UC1 );
+			cvtColor( dummy3, gray_box, COLOR_BGR2GRAY );
 			//GaussianBlur( box[i*9+j], box[i*9+j], Size(7,7), 0, 0, BORDER_DEFAULT );
-			threshold( box[i*9+j], box[i*9+j], 0, 255, CV_THRESH_BINARY_INV | CV_THRESH_OTSU );
+			threshold( gray_box, box[i*9+j], 0, 255, CV_THRESH_BINARY_INV | CV_THRESH_OTSU );
+			//adaptive_otsuThresholding( box[i*9+j], box[i*9+j], 0, 255 );
 			erode( box[i*9+j], box[i*9+j], kernel, Point(-1,-1), 1 ); 
 
-			//adaptiveThreshold( box[9*i+j], box[9*i+j], 255, ADAPTIVE_THRESH_GAUSSIAN_C, THRESH_BINARY_INV, 11, 0 );
+			bool number = can_be_Number( gray_box, width, height ); 
 
-			remove_whiteBorders( box[i*9+j], width, height, Scalar(0) );
-			//findContours( box[i*9+j], transf_contours, transf_hierarchy, RETR_TREE, CHAIN_APPROX_SIMPLE);
+
+			//adaptiveThreshold( box[9*i+j], box[9*i+j], 255, ADAPTIVE_THRESH_GAUSSIAN_C, THRESH_BINARY_INV, 11, 0 );
+			if(number) {
+
+				cout << i << "   " << j << endl;
+				//remove_whiteBorders( box[i*9+j], width, height, Scalar(0) );
+				//cout << ct << endl;
+			  //copyMakeBorder( box[i*9+j], box[i*9+j], 4, 4, 4, 4, BORDER_CONSTANT ); 
+				//findContours( box[i*9+j], transf_contours, transf_hierarchy, RETR_TREE, CHAIN_APPROX_SIMPLE);
+				if(i*9+j == q) {
+					imshow("box[q]_thresholded", box[i*9+j]);
+					waitKey(0);
+			  }
 			//drawContours( box[i*9+j], transf_contours, -1, Scalar(255), CV_FILLED, 8 );   
 
-			dummy = Mat::zeros( img.rows/8, img.cols/8, CV_8UC1 );
-			dummy.setTo(Scalar(255));
+				dummy = Mat::zeros( img.rows/8, img.cols/8, CV_8UC1 );
+				dummy.setTo(Scalar(255));
 
-			dummy = box[i*9+j].clone();
+				dummy = box[i*9+j].clone();
 
-			areas = 0;
-			contour_areas = 0;
-			findContours( dummy, transf_contours2, transf_hierarchy2, RETR_TREE, CHAIN_APPROX_SIMPLE );
-			for(iter = 0, max = 0 ; iter < transf_contours2.size() ; iter++) {
-				temp = areas;
-				areas = ( areas > (contourArea(transf_contours2[iter],false)) ? areas : (contourArea(transf_contours2[iter],false)) );
-				if(areas != temp) max = iter;
+				areas = 0;
+				contour_areas = 0;
+				findContours( dummy, transf_contours2, transf_hierarchy2, RETR_TREE, CHAIN_APPROX_SIMPLE );
+				for(iter = 0, max = 0 ; iter < transf_contours2.size() ; iter++) {
+					temp = areas;
+					areas = ( areas > (contourArea(transf_contours2[iter],false)) ? areas : (contourArea(transf_contours2[iter],false)) );
+					if(areas != temp) max = iter;
+				}
+
+				if(transf_contours2.size()) {
+					bound_rect = boundingRect( (transf_contours2[max]) );
+					c = box[i*9+j].cols; r = box[i*9+j].rows;
+					if(0 <= bound_rect.x && 0 <= bound_rect.width && bound_rect.x + bound_rect.width <= c && 0 <= bound_rect.y && 0 <= bound_rect.height && bound_rect.y + bound_rect.height <= r)
+						temp_box = box[i*9+j](bound_rect);
+					else 
+						bound_rect_error( bound_rect, c, r );
+					resize( temp_box, temp_box, Size(22,22) );
+					copyMakeBorder( temp_box, temp_box, 4, 4, 4, 4, BORDER_CONSTANT ); 
+				}
+				else continue;
+
+				/*temp_box = dummy3(bound_rect);
+					cvtColor( temp_box, temp_box, COLOR_BGR2GRAY );
+				 */
+
+				threshold( temp_box, temp_box, 0, 255, CV_THRESH_BINARY_INV | CV_THRESH_OTSU );
+
+				/*resize( temp_box, temp_box, Size(22,22) );
+					copyMakeBorder( temp_box, temp_box, 4, 4, 4, 4, BORDER_CONSTANT ); 
+				 */
+
+				if(i*9+j == q) {
+					namedWindow("GAF",WINDOW_NORMAL);
+					imshow("GAF",temp_box);
+					waitKey(0);
+				}
+				//cout << i*9+j <<  endl;
+
+				//resize( box[i*9+j], box[i*9+j], Size(img.cols/4,img.rows/4) );
+
+				tesseract::TessBaseAPI tess;
+				tess.Init(NULL, "eng", tesseract::OEM_DEFAULT);
+				tess.SetVariable("tessedit_char_whitelist", "0123456789");
+				//PIX *pix = pixCreateHeader( temp_box.size().width, temp_box.size().height, temp_box.depth() );
+
+				tess.SetPageSegMode( tesseract::PSM_SINGLE_CHAR );
+				//tess.SetImage((uchar*)temp_box.data, box[i*9+j].cols, box[i*9+j].rows, 1, box[i*9+j].cols);
+				tess.SetImage((uchar*)temp_box.data, temp_box.size().width, temp_box.size().height, temp_box.channels(), temp_box.step1());
+				//tess.ProcessPage( pix, NULL, 0, &text );
+
+				ch = tess.GetUTF8Text();
+				ct++;
+				out[i][j] = atoi(ch);
 			}
-
-			if(transf_contours2.size()) {
-				bound_rect = boundingRect( (transf_contours2[max]) );
-				c = box[i*9+j].cols; r = box[i*9+j].rows;
-				if(0 <= bound_rect.x && 0 <= bound_rect.width && bound_rect.x + bound_rect.width <= c && 0 <= bound_rect.y && 0 <= bound_rect.height && bound_rect.y + bound_rect.height <= r)
-					temp_box = box[i*9+j](bound_rect);
-				else 
-					bound_rect_error( bound_rect, c, r );
-				resize( temp_box, temp_box, Size(22,22) );
-				copyMakeBorder( temp_box, temp_box, 4, 4, 4, 4, BORDER_CONSTANT ); 
-			}
-			else continue;
-
-			threshold( temp_box, temp_box, 0, 255, CV_THRESH_BINARY_INV | CV_THRESH_OTSU );
-
-			if(i*9+j == q) {
-				namedWindow("GAF",WINDOW_NORMAL);
-				imshow("GAF",temp_box);
-				waitKey(0);
-			}
-			//cout << i*9+j << " : " << areas << endl;
-
-			//resize( box[i*9+j], box[i*9+j], Size(img.cols/4,img.rows/4) );
-
-			tesseract::TessBaseAPI tess;
-			tess.Init(NULL, "eng", tesseract::OEM_DEFAULT);
-			tess.SetVariable("tessedit_char_whitelist", "0123456789");
-			//PIX *pix = pixCreateHeader( temp_box.size().width, temp_box.size().height, temp_box.depth() );
-
-			tess.SetPageSegMode( tesseract::PSM_SINGLE_CHAR );
-			//tess.SetImage((uchar*)temp_box.data, box[i*9+j].cols, box[i*9+j].rows, 1, box[i*9+j].cols);
-			tess.SetImage((uchar*)temp_box.data, temp_box.size().width, temp_box.size().height, temp_box.channels(), temp_box.step1());
-			//tess.ProcessPage( pix, NULL, 0, &text );
-
-			ch = tess.GetUTF8Text();
-			out[i][j] = atoi(ch);
+			else 
+				out[i][j] = 0;
 			//cout << *ch << "  ";
 		}
 		//cout << endl;
@@ -422,8 +538,8 @@ int main (int argc, char *argv[]) {
 	//resizeWindow("display",w,h);
 	imshow("display3",src);
 	//namedWindow("display1",WINDOW_NORMAL);
-	namedWindow("test",WINDOW_NORMAL);
-	imshow("test",box[q]);
+	//namedWindow("test",WINDOW_NORMAL);
+	//imshow("test",box[q]);
 	//imshow("display1",sudoku_box);
 	waitKey(0);
 
